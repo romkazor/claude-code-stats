@@ -28,6 +28,7 @@
 		A24 /* HTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = B26 /* HTTP.swift */; };
 		A25 /* TraceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27 /* TraceService.swift */; };
 		A26 /* TraceCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B28 /* TraceCardView.swift */; };
+		A27 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B29 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +55,7 @@
 		B26 /* HTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTP.swift; sourceTree = "<group>"; };
 		B27 /* TraceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceService.swift; sourceTree = "<group>"; };
 		B28 /* TraceCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceCardView.swift; sourceTree = "<group>"; };
+		B29 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		P01 /* ClaudeCodeStats.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeCodeStats.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -87,6 +89,7 @@
 				B17 /* UsageViewModel.swift */,
 				G04 /* Services */,
 				G05 /* Views */,
+				B29 /* Assets.xcassets */,
 				B08 /* Info.plist */,
 				B09 /* ClaudeCodeStats.entitlements */,
 			);
@@ -188,6 +191,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A27 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
