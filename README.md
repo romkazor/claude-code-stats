@@ -14,6 +14,7 @@ A native macOS menu bar app that displays your Claude Code usage limits in real-
 - **Auto-refresh** - Updates every 5 minutes automatically
 - **Claude service status** - Live status from [status.claude.com](https://status.claude.com) shown in the footer (Operational, Degraded, Outage, Critical)
 - **Version update detection** - Checks for new Claude Code releases hourly via GitHub; shows a red dot badge on the menu bar icon and a banner when an update is available, with a link to the changelog
+- **Trace** - How Cloudflare sees your connection to Claude: country (with flag), edge datacentre, public IP, negotiated HTTP/TLS/key exchange, and whether WARP is on. Useful for checking which region Claude is serving you from. Your IP is masked until you click it, and the whole card — including its request — can be switched off in Settings
 - **Native macOS app** - Built with SwiftUI, lightweight and fast
 - **Light/dark theme** - Follows macOS appearance, or pin it to Light or Dark in Settings
 
@@ -107,6 +108,8 @@ ClaudeCodeStats/
     │   ├── RTKSavingsService.swift  # RTK token savings from its local history
     │   ├── UsageHistoryService.swift# Usage history persistence
     │   ├── StatusService.swift      # Claude service health status
+    │   ├── TraceService.swift       # Cloudflare edge view of the connection
+    │   ├── HTTP.swift               # Shared User-Agent and session config
     │   └── VersionService.swift     # Claude Code version update checker
     └── Views/
         ├── UsageCardView.swift      # Usage card component
@@ -114,13 +117,14 @@ ClaudeCodeStats/
         ├── SpendCardView.swift      # API-equivalent spend card
         ├── SpendChartView.swift     # 30-day spend chart
         ├── RTKSavingsCardView.swift # RTK token savings card
+        ├── TraceCardView.swift      # Connection trace card
         └── SettingsView.swift       # Settings screen
 ```
 
 ## Privacy
 
 - The app reads OAuth credentials from `~/.claude/.credentials.json` or the macOS Keychain (no secrets are stored by the app itself)
-- The app communicates with the Anthropic API to fetch usage data, status.claude.com for service health, and the GitHub API for version checks
+- The app communicates with the Anthropic API to fetch usage data, status.claude.com for service health, the GitHub API for version checks, and claude.ai/cdn-cgi/trace for the Trace card — four hosts, all plain GETs, none of which receive anything about your usage. Turning the Trace card off in Settings stops that fourth request entirely
 - API-equivalent spend and RTK savings are computed entirely on your machine from Claude Code's transcripts and RTK's local history database — no network calls, and nothing about your usage leaves your device
 - The app never runs a shell or sources your shell startup files; the installed CLI version is read from files on disk
 - No data is sent to any third parties
