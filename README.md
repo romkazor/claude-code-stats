@@ -122,6 +122,7 @@ ClaudeCodeStats/
 - The app reads OAuth credentials from `~/.claude/.credentials.json` or the macOS Keychain (no secrets are stored by the app itself)
 - The app communicates with the Anthropic API to fetch usage data, status.claude.com for service health, and the GitHub API for version checks
 - API-equivalent spend and RTK savings are computed entirely on your machine from Claude Code's transcripts and RTK's local history database — no network calls, and nothing about your usage leaves your device
+- The app never runs a shell or sources your shell startup files; the installed CLI version is read from files on disk
 - No data is sent to any third parties
 
 ## License
