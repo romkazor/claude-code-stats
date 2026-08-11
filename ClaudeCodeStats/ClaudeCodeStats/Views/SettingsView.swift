@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage("showWeeklyInMenuBar") private var showWeekly = false
     @AppStorage("showFableInMenuBar") private var showFable = false
     @AppStorage("appearancePreference") private var appearance: AppearancePreference = .system
+    @AppStorage(TraceSettings.key) private var showTrace = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,6 +24,7 @@ struct SettingsView: View {
                 authStatusSection
                 appearanceSection
                 menuBarDisplaySection
+                connectionSection
                 versionRow
             }
             .padding(12)
@@ -132,6 +134,28 @@ struct SettingsView: View {
                 .foregroundColor(Theme.textSecondary)
                 .toggleStyle(.switch)
                 .controlSize(.mini)
+        }
+        .padding(12)
+        .background(Theme.cardBackground)
+        .cornerRadius(8)
+    }
+
+    private var connectionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Connection")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Theme.textPrimary)
+
+            Toggle("Show trace card", isOn: $showTrace)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.textSecondary)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+            Text("Country, edge datacentre and protocols, from Cloudflare at claude.ai. Off means the request isn't sent at all.")
+                .font(.system(size: 10))
+                .foregroundColor(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .background(Theme.cardBackground)

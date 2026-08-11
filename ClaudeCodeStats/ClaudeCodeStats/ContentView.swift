@@ -6,6 +6,9 @@ struct ContentView: View {
     @EnvironmentObject var updateChecker: UpdateChecker
     @State private var showingSettings = false
     @State private var isSpinning = false
+    // Mirrors the toggle so switching it off hides the card immediately, without
+    // waiting for the next refresh to clear the view model.
+    @AppStorage(TraceSettings.key) private var showTrace = true
 
     private static let lastUpdatedTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -153,6 +156,12 @@ struct ContentView: View {
             // Only present when RTK is installed and has logged commands.
             if let rtk = viewModel.rtkSavings {
                 RTKSavingsCardView(savings: rtk)
+            }
+
+            // Last card: connection facts are reference material, so the limits
+            // stay the first thing visible when the popover opens.
+            if showTrace, let trace = viewModel.trace {
+                TraceCardView(trace: trace)
             }
         }
         .padding(12)

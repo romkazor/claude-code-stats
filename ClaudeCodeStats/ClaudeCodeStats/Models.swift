@@ -180,6 +180,88 @@ struct SpendData {
     let lastUpdated: Date
 }
 
+// Where Cloudflare says this machine is reaching Claude from, read from the
+// `cdn-cgi/trace` endpoint. Every field is optional: the endpoint is free to add
+// and drop keys, and a missing one should hide its row rather than fail the card.
+struct TraceInfo {
+    let location: String?      // loc
+    let colo: String?          // colo
+    let ip: String?            // ip
+    let httpVersion: String?   // http
+    let tls: String?           // tls
+    let keyExchange: String?   // kex
+    let warp: String?          // warp
+    let lastUpdated: Date
+
+    /// Codes that are shaped like a country but aren't one. `XX` is Cloudflare's
+    /// "unknown", and rendering it as a flag yields a box with two letters in it
+    /// rather than anything meaningful. `T1` (Tor) is already excluded by the
+    /// letters-only check below, and is listed so the reason is recorded.
+    private static let nonCountryCodes: Set<String> = ["XX", "T1"]
+
+    /// The country as a flag, or nil when the code can't be one.
+    ///
+    /// Flags are pairs of regional indicator symbols, so any two ASCII letters
+    /// produce *something* — which is why the input is checked rather than
+    /// trusted.
+    var locationFlag: String? {
+        guard let location, location.count == 2,
+              !Self.nonCountryCodes.contains(location),
+              location.allSatisfy({ $0.isASCII && $0.isUppercase && $0.isLetter })
+        else { return nil }
+
+        let base: UInt32 = 0x1F1E6  // REGIONAL INDICATOR SYMBOL LETTER A
+        var flag = ""
+        for character in location.unicodeScalars {
+            guard let scalar = UnicodeScalar(base + character.value - 65) else { return nil }
+            flag.unicodeScalars.append(scalar)
+        }
+        return flag
+    }
+
+    /// The address with its host portion hidden, so a screenshot of the popover
+    /// doesn't publish it. The card reveals the full value on tap.
+    var maskedIP: String? {
+        guard let ip, !ip.isEmpty else { return nil }
+
+        if ip.contains(":") {
+            // IPv6: keep the first group, which is enough to recognise the
+            // network without identifying the host. Empty subsequences are kept
+            // deliberately — an address written `::1` or `::ffff:…` opens with an
+            // elided group, and dropping it would promote a *host* group into the
+            // position this treats as the network prefix and print it in clear.
+            let head = ip.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+                .first.map(String.init) ?? ""
+            return head.isEmpty ? "•••" : "\(head):…"
+        }
+
+        let octets = ip.split(separator: ".")
+        if octets.count == 4 {
+            return "\(octets[0]).\(octets[1]).•••.•••"
+        }
+
+        // Neither shape. Hide all of it rather than guess which part is sensitive.
+        return "•••"
+    }
+}
+
+/// The Trace card's visibility, which also gates the network request.
+///
+/// Not `@AppStorage`: that is a `DynamicProperty` built for `View`, and inside an
+/// `ObservableObject` it compiles but never publishes through `objectWillChange`.
+/// Views still use `@AppStorage` on the same key — there it belongs.
+enum TraceSettings {
+    static let key = "showTrace"
+
+    /// Defaults to on. `UserDefaults.bool(forKey:)` reports `false` for a key that
+    /// was never written, which would leave the card hidden until the user
+    /// toggled it twice, so an absent value is checked for explicitly.
+    static var isEnabled: Bool {
+        UserDefaults.standard.object(forKey: key) == nil
+            || UserDefaults.standard.bool(forKey: key)
+    }
+}
+
 enum UsageError: Error, LocalizedError {
     case noCredentials
     case networkError(Error)

@@ -17,6 +17,10 @@ class UsageViewModel: ObservableObject {
     // isn't installed, which keeps the card off the popover entirely.
     @Published var rtkSavings: RTKSavings?
 
+    // Cloudflare's view of the connection. Nil until the first successful fetch,
+    // or whenever the card is switched off.
+    @Published var trace: TraceInfo?
+
     private var refreshTimer: Timer?
 
     var backgroundRefreshEnabled: Bool = false {
@@ -79,6 +83,22 @@ class UsageViewModel: ObservableObject {
         await refreshStatus()
         await refreshSpend()
         await refreshRTKSavings()
+        await refreshTrace()
+    }
+
+    // The only outbound request the user can switch off, so the toggle is checked
+    // before the fetch rather than in the view: a disabled card must cost no
+    // traffic, not merely stay hidden. Clearing `trace` on the way out stops a
+    // stale reading from flashing up if the card is switched back on.
+    func refreshTrace() async {
+        guard TraceSettings.isEnabled else {
+            trace = nil
+            return
+        }
+        // Non-critical, like status: keep the last good reading on a failure.
+        if let latest = try? await TraceService.shared.fetch() {
+            trace = latest
+        }
     }
 
     // Spend reads the local transcripts, so it has no bearing on the usage
