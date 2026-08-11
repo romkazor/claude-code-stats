@@ -17,10 +17,7 @@ class VersionService {
     private let session: URLSession
 
     private init() {
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 15
-        configuration.timeoutIntervalForResource = 15
-        self.session = URLSession(configuration: configuration)
+        self.session = URLSession(configuration: HTTP.configuration(timeout: 15))
     }
 
     /// The installed CLI version, read from disk — deliberately without running a
@@ -190,7 +187,8 @@ class VersionService {
 
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("ClaudeCodeStats/1.0", forHTTPHeaderField: "User-Agent")
+        // No User-Agent here: the session already carries `HTTP.userAgent`, and a
+        // per-request header would override it.
 
         let (data, response) = try await session.data(for: request)
 

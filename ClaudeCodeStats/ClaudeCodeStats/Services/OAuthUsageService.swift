@@ -35,9 +35,10 @@ class OAuthUsageService {
     }
 
     private init() {
-        let config = URLSessionConfiguration.default
+        let config = HTTP.configuration(timeout: 15)
         config.waitsForConnectivity = true
-        config.timeoutIntervalForRequest = 15
+        // Longer than the request timeout: a retried request may outlive a single
+        // attempt, and the factory sets both to the same value.
         config.timeoutIntervalForResource = 20
         self.session = URLSession(configuration: config)
     }

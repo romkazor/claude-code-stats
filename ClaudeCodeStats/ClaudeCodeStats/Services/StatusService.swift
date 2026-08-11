@@ -36,10 +36,7 @@ class StatusService {
     private let session: URLSession
 
     private init() {
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 10
-        configuration.timeoutIntervalForResource = 10
-        self.session = URLSession(configuration: configuration)
+        self.session = URLSession(configuration: HTTP.configuration(timeout: 10))
     }
 
     func fetchStatus() async throws -> ClaudeStatus {
