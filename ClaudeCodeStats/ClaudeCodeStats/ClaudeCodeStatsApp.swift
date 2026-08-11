@@ -8,10 +8,19 @@ struct ClaudeCodeStatsApp: App {
     @AppStorage("showSessionInMenuBar") private var showSession = false
     @AppStorage("showWeeklyInMenuBar") private var showWeekly = false
     @AppStorage("showFableInMenuBar") private var showFable = false
+    @AppStorage(Prefs.showLocationInMenuBar) private var showLocation = false
     @AppStorage("appearancePreference") private var appearance: AppearancePreference = .system
 
     private var showRings: Bool {
         showSession || showWeekly || showFable
+    }
+
+    /// Whether anything in the menu bar needs live data. The flag is fed by the
+    /// trace fetch, so it has to keep the 5-minute refresh alive on its own —
+    /// otherwise a user showing only the flag would watch it freeze at whatever
+    /// the popover last saw.
+    private var needsLiveData: Bool {
+        showRings || showLocation
     }
 
     var body: some Scene {
@@ -23,33 +32,51 @@ struct ClaudeCodeStatsApp: App {
                 .environmentObject(viewModel)
                 .appearanceOverride(appearance)
         } label: {
-            ZStack(alignment: .topTrailing) {
-                if showRings {
-                    let sessionPct = viewModel.webUsage?.sessionUsage ?? 0
-                    let weeklyPct = viewModel.webUsage?.weeklyUsage ?? 0
-                    let fablePct = viewModel.webUsage?.scopedLimits
-                        .first(where: { $0.name == "Fable" })?.usage ?? 0
-                    Image(nsImage: renderRings(
-                        session: showSession ? sessionPct : nil,
-                        weekly: showWeekly ? weeklyPct : nil,
-                        fable: showFable ? fablePct : nil
-                    ))
-                } else {
-                    Image(systemName: "chart.bar.fill")
-                        .symbolRenderingMode(.hierarchical)
+            HStack(spacing: 3) {
+                ZStack(alignment: .topTrailing) {
+                    if showRings {
+                        let sessionPct = viewModel.webUsage?.sessionUsage ?? 0
+                        let weeklyPct = viewModel.webUsage?.weeklyUsage ?? 0
+                        let fablePct = viewModel.webUsage?.scopedLimits
+                            .first(where: { $0.name == "Fable" })?.usage ?? 0
+                        Image(nsImage: renderRings(
+                            session: showSession ? sessionPct : nil,
+                            weekly: showWeekly ? weeklyPct : nil,
+                            fable: showFable ? fablePct : nil
+                        ))
+                    } else {
+                        Image(systemName: "chart.bar.fill")
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    if updateChecker.hasUpdate {
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 7, height: 7)
+                            .offset(x: 4, y: -3)
+                    }
                 }
-                if updateChecker.hasUpdate {
-                    Circle()
-                        .fill(.red)
-                        .frame(width: 7, height: 7)
-                        .offset(x: 4, y: -3)
+
+                // Drawn as SwiftUI text rather than into the rings bitmap: an
+                // emoji flag is a colour glyph, and compositing it into that
+                // NSImage would need the image left non-template — which it is,
+                // but the text also tracks the menu bar's own font metrics for
+                // free. Absent until the first trace arrives, and absent for
+                // countries Cloudflare can't name (see TraceInfo.locationFlag).
+                if showLocation, let flag = viewModel.trace?.locationFlag {
+                    Text(flag)
                 }
             }
             .onAppear {
-                viewModel.backgroundRefreshEnabled = showRings
+                viewModel.backgroundRefreshEnabled = needsLiveData
             }
-            .onChange(of: showRings) { _, newValue in
+            .onChange(of: needsLiveData) { _, newValue in
                 viewModel.backgroundRefreshEnabled = newValue
+            }
+            .onChange(of: showLocation) { _, _ in
+                // Turning the flag on with the Trace card off means nothing has
+                // ever fetched trace data. Ask for it now instead of leaving the
+                // menu bar blank until the next scheduled refresh.
+                Task { await viewModel.refreshTrace() }
             }
         }
         .menuBarExtraStyle(.window)

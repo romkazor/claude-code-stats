@@ -48,7 +48,8 @@ There are no tests or linters configured, so verifying a change means running th
 - Services are singletons with `static let shared` and private `init()`
 - Non-critical features (status, version check) fail silently
 - `@MainActor` on ObservableObjects, `@Published` for reactive state
-- `@AppStorage` for persisted user preferences (e.g. dismissed update version)
+- `@AppStorage` for persisted user preferences (e.g. dismissed update version). Keys the view model also reads live in `Prefs` (`Models.swift`) — `@AppStorage` is a `DynamicProperty` for `View` and never publishes from an `ObservableObject`, so `UsageViewModel` reads `UserDefaults` through `Prefs` instead. Read a default-on toggle with `Prefs.bool(_:default:)`, never `UserDefaults.bool(forKey:)`: the latter reports `false` for an unset key and would turn the toggle off until flipped twice
+- Card toggles gate the **work**, not just the view: with a card off, `UsageViewModel` skips the transcript scan / the RTK database read / the trace request. The trace fetch is shared with the menu bar flag, so it is gated on `Prefs.needsTrace` (either consumer) rather than on the card alone
 - Auto-refresh timers: 5 min for usage, 1 hour for version checks
 - The app sandbox is disabled (`com.apple.security.app-sandbox = false`)
 - Colors are defined in `Theme.swift` (`Theme.background`, `Theme.cardBackground`, `Theme.textSecondary`, etc.) — always use `Theme.*` constants, never inline color literals or local computed properties

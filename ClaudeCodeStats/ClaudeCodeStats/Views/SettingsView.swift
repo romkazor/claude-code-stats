@@ -5,8 +5,11 @@ struct SettingsView: View {
     @AppStorage("showSessionInMenuBar") private var showSession = false
     @AppStorage("showWeeklyInMenuBar") private var showWeekly = false
     @AppStorage("showFableInMenuBar") private var showFable = false
+    @AppStorage(Prefs.showLocationInMenuBar) private var showLocation = false
     @AppStorage("appearancePreference") private var appearance: AppearancePreference = .system
-    @AppStorage(TraceSettings.key) private var showTrace = true
+    @AppStorage(Prefs.showSpendCard) private var showSpendCard = true
+    @AppStorage(Prefs.showRTKCard) private var showRTKCard = true
+    @AppStorage(Prefs.showTraceCard) private var showTrace = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,6 +27,7 @@ struct SettingsView: View {
                 authStatusSection
                 appearanceSection
                 menuBarDisplaySection
+                cardsSection
                 connectionSection
                 versionRow
             }
@@ -134,6 +138,45 @@ struct SettingsView: View {
                 .foregroundColor(Theme.textSecondary)
                 .toggleStyle(.switch)
                 .controlSize(.mini)
+
+            Toggle("Show location flag", isOn: $showLocation)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.textSecondary)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+            Text("The flag needs the trace request, so it stays live even with the Trace card off.")
+                .font(.system(size: 10))
+                .foregroundColor(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .background(Theme.cardBackground)
+        .cornerRadius(8)
+    }
+
+    private var cardsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Cards")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Theme.textPrimary)
+
+            Toggle("API-equivalent spend", isOn: $showSpendCard)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.textSecondary)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+            Toggle("RTK savings", isOn: $showRTKCard)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.textSecondary)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+            Text("Hiding a card also skips its work — no transcript scan, no database read.")
+                .font(.system(size: 10))
+                .foregroundColor(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .background(Theme.cardBackground)

@@ -89,9 +89,12 @@ class UsageViewModel: ObservableObject {
     // The only outbound request the user can switch off, so the toggle is checked
     // before the fetch rather than in the view: a disabled card must cost no
     // traffic, not merely stay hidden. Clearing `trace` on the way out stops a
-    // stale reading from flashing up if the card is switched back on.
+    // stale reading from flashing up if it is switched back on.
+    //
+    // Two consumers, one fetch: the card and the menu bar flag. `needsTrace` is
+    // true while either wants it, so hiding the card doesn't blank the flag.
     func refreshTrace() async {
-        guard TraceSettings.isEnabled else {
+        guard Prefs.needsTrace else {
             trace = nil
             return
         }
@@ -104,7 +107,15 @@ class UsageViewModel: ObservableObject {
     // Spend reads the local transcripts, so it has no bearing on the usage
     // endpoint's rate limit and is safe to recompute on every refresh. The scan
     // is incremental after the first one.
+    //
+    // Gated on the card's toggle because a cold scan parses the whole corpus —
+    // gigabytes, seconds of CPU. Hiding the card without skipping that would
+    // leave the most expensive thing the app does running for nothing.
     func refreshSpend() async {
+        guard Prefs.isSpendCardEnabled else {
+            spend = nil
+            return
+        }
         spend = await CostService.shared.fetchSpend()
     }
 
@@ -112,7 +123,16 @@ class UsageViewModel: ObservableObject {
     // endpoint. If RTK is gone entirely the card is cleared so it self-hides;
     // otherwise the last-good value is kept on a nil fetch so a transient db lock
     // doesn't blink the card away. It first appears once RTK has logged a command.
+    //
+    // With the card off the SQLite read is skipped entirely. Note that RTK's
+    // value range is scaled by a ratio `CostService` accumulates while scanning,
+    // so with the Spend card also off that ratio comes from whatever the on-disk
+    // cache last held rather than from a fresh scan.
     func refreshRTKSavings() async {
+        guard Prefs.isRTKCardEnabled else {
+            rtkSavings = nil
+            return
+        }
         if let latest = await RTKSavingsService.shared.fetch() {
             rtkSavings = latest
         } else if !(await RTKSavingsService.shared.isInstalled) {

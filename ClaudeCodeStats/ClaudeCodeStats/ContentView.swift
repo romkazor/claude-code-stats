@@ -8,7 +8,11 @@ struct ContentView: View {
     @State private var isSpinning = false
     // Mirrors the toggle so switching it off hides the card immediately, without
     // waiting for the next refresh to clear the view model.
-    @AppStorage(TraceSettings.key) private var showTrace = true
+    // Mirrored from the toggles so a card disappears the moment it is switched
+    // off, without waiting for the next refresh to clear the view model.
+    @AppStorage(Prefs.showSpendCard) private var showSpendCard = true
+    @AppStorage(Prefs.showRTKCard) private var showRTKCard = true
+    @AppStorage(Prefs.showTraceCard) private var showTrace = true
 
     private static let lastUpdatedTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -149,12 +153,12 @@ struct ContentView: View {
 
             // Absent only until the first transcript scan finishes. The limits
             // above come from the API and shouldn't wait on it.
-            if let spend = viewModel.spend {
+            if showSpendCard, let spend = viewModel.spend {
                 SpendCardView(spend: spend)
             }
 
             // Only present when RTK is installed and has logged commands.
-            if let rtk = viewModel.rtkSavings {
+            if showRTKCard, let rtk = viewModel.rtkSavings {
                 RTKSavingsCardView(savings: rtk)
             }
 

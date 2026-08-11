@@ -245,21 +245,38 @@ struct TraceInfo {
     }
 }
 
-/// The Trace card's visibility, which also gates the network request.
+/// Preference keys the view model has to read, and their defaults.
 ///
-/// Not `@AppStorage`: that is a `DynamicProperty` built for `View`, and inside an
-/// `ObservableObject` it compiles but never publishes through `objectWillChange`.
-/// Views still use `@AppStorage` on the same key — there it belongs.
-enum TraceSettings {
-    static let key = "showTrace"
+/// Views bind to these keys with `@AppStorage`, which is where that property
+/// wrapper belongs. `UsageViewModel` can't: `@AppStorage` is a `DynamicProperty`
+/// built for `View`, and inside an `ObservableObject` it compiles but never
+/// publishes through `objectWillChange`. So the model reads `UserDefaults`
+/// directly, and both sides agree on the constants here.
+enum Prefs {
+    static let showSpendCard = "showSpendCard"
+    static let showRTKCard = "showRTKCard"
+    static let showTraceCard = "showTrace"
+    static let showLocationInMenuBar = "showLocationInMenuBar"
 
-    /// Defaults to on. `UserDefaults.bool(forKey:)` reports `false` for a key that
-    /// was never written, which would leave the card hidden until the user
-    /// toggled it twice, so an absent value is checked for explicitly.
-    static var isEnabled: Bool {
+    /// `UserDefaults.bool(forKey:)` reports `false` for a key that was never
+    /// written, which would silently turn every default-on toggle off until the
+    /// user flipped it twice. An absent value falls back to `defaultValue`.
+    static func bool(_ key: String, default defaultValue: Bool) -> Bool {
         UserDefaults.standard.object(forKey: key) == nil
-            || UserDefaults.standard.bool(forKey: key)
+            ? defaultValue
+            : UserDefaults.standard.bool(forKey: key)
     }
+
+    // Cards are on by default: they are the app's reason to exist. The menu bar
+    // extras are off, matching the session/weekly/Fable toggles beside them.
+    static var isSpendCardEnabled: Bool { bool(showSpendCard, default: true) }
+    static var isRTKCardEnabled: Bool { bool(showRTKCard, default: true) }
+    static var isTraceCardEnabled: Bool { bool(showTraceCard, default: true) }
+    static var isLocationInMenuBarEnabled: Bool { bool(showLocationInMenuBar, default: false) }
+
+    /// Whether anything still needs trace data. The menu bar flag is fed by the
+    /// same fetch as the card, so switching the card off must not starve it.
+    static var needsTrace: Bool { isTraceCardEnabled || isLocationInMenuBarEnabled }
 }
 
 enum UsageError: Error, LocalizedError {
