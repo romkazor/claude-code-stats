@@ -181,6 +181,14 @@ class OAuthUsageService {
         return extractCredential(from: data)
     }
 
+    /// Writes the token to this app's own keychain item, updating in place.
+    ///
+    /// Deliberately *not* delete-then-add. Keychain authorises per operation, so
+    /// deleting an item is a separate grant from reading it — and the CLI rotates
+    /// its token several times a day, which meant several delete calls a day, each
+    /// able to raise a permission dialog no amount of "Always Allow" on a *read*
+    /// would cover. Updating touches only the stored value and leaves the item,
+    /// and its ACL, in place.
     private func saveCredentialToAppKeychain(_ credential: Credential) {
         var payload: [String: Any] = ["accessToken": credential.token]
         if let expiresAt = credential.expiresAt {
@@ -188,19 +196,32 @@ class OAuthUsageService {
         }
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
 
-        // Delete existing item first (if any)
-        deleteAppKeychainItem()
-
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: appKeychainService,
-            kSecAttrAccount as String: appKeychainAccount,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            kSecAttrAccount as String: appKeychainAccount
         ]
-        let status = SecItemAdd(query as CFDictionary, nil)
-        if status != errSecSuccess {
-            NSLog("OAuthUsageService: Failed to cache credential in app keychain (status: \(status))")
+
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecSuccess { return }
+
+        // Anything other than "no such item" means an item exists that we can't
+        // write to — typically one left by a build signed with a different
+        // identity, since a keychain ACL is bound to the signature that created
+        // it. Without this, every rotation would retry the same doomed update and
+        // ask again. Recreating it makes the current signature the owner, which
+        // costs at most one prompt, once.
+        if updateStatus != errSecItemNotFound {
+            NSLog("OAuthUsageService: Cached credential not writable (status: \(updateStatus)); recreating")
+            deleteAppKeychainItem()
+        }
+
+        var insert = query
+        insert[kSecValueData as String] = data
+        insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let addStatus = SecItemAdd(insert as CFDictionary, nil)
+        if addStatus != errSecSuccess {
+            NSLog("OAuthUsageService: Failed to cache credential in app keychain (status: \(addStatus))")
         }
     }
 

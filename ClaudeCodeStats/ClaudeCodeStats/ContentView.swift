@@ -212,7 +212,7 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
-            if !OAuthUsageService.shared.hasCredentials {
+            if !viewModel.hasCredentials {
                 Button("How to fix") {
                     showingSettings = true
                 }

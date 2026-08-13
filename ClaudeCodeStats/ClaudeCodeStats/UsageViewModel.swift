@@ -21,6 +21,16 @@ class UsageViewModel: ObservableObject {
     // or whenever the card is switched off.
     @Published var trace: TraceInfo?
 
+    // Whether a usable OAuth token was found, sampled once per refresh.
+    //
+    // Views must read this rather than calling `OAuthUsageService.hasCredentials`
+    // directly: that walks the whole token cascade, and on setups without
+    // `~/.claude/.credentials.json` the cascade reaches the CLI's keychain item.
+    // A SwiftUI `body` re-evaluates on every state change, so calling it there
+    // turned one settings screen into several keychain reads — and each one can
+    // raise a system permission prompt once the cached token has rotated out.
+    @Published private(set) var hasCredentials = false
+
     private var refreshTimer: Timer?
 
     var backgroundRefreshEnabled: Bool = false {
@@ -72,10 +82,20 @@ class UsageViewModel: ObservableObject {
             let usage = try await OAuthUsageService.shared.fetchUsage()
             webUsage = usage
             error = nil
+            hasCredentials = true
             UsageHistoryService.shared.record(usage)
+        } catch UsageError.noCredentials {
+            // The one failure that actually means "no token". Every other error —
+            // network, rate limit, expired — happened *after* a token was found,
+            // so the credential state stays as it was.
+            hasCredentials = false
+            self.error = UsageError.noCredentials.localizedDescription
         } catch {
             // Keep the last good data on screen. When webUsage exists, ContentView
             // shows a subtle banner instead of replacing everything with an error.
+            //
+            // Reaching here means a token was read, whatever went wrong next.
+            hasCredentials = true
             self.error = error.localizedDescription
         }
 

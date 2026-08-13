@@ -2,6 +2,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @Binding var isPresented: Bool
+    // Supplied by ContentView's environment. Carries the credential state so this
+    // screen never reads the keychain while drawing.
+    @EnvironmentObject var viewModel: UsageViewModel
     @AppStorage("showSessionInMenuBar") private var showSession = false
     @AppStorage("showWeeklyInMenuBar") private var showWeekly = false
     @AppStorage("showFableInMenuBar") private var showFable = false
@@ -64,17 +67,17 @@ struct SettingsView: View {
 
             HStack(spacing: 8) {
                 Circle()
-                    .fill(OAuthUsageService.shared.hasCredentials ? Color.green : Color.red)
+                    .fill(viewModel.hasCredentials ? Color.green : Color.red)
                     .frame(width: 8, height: 8)
 
-                Text(OAuthUsageService.shared.hasCredentials
+                Text(viewModel.hasCredentials
                      ? "Authenticated via Claude Code"
                      : "Not authenticated")
                     .font(.system(size: 11))
                     .foregroundColor(Theme.textSecondary)
             }
 
-            if !OAuthUsageService.shared.hasCredentials {
+            if !viewModel.hasCredentials {
                 Text("Run 'claude' in your terminal to log in. Credentials are detected automatically.")
                     .font(.system(size: 10))
                     .foregroundColor(Theme.textSecondary)
@@ -222,4 +225,5 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView(isPresented: .constant(true))
+        .environmentObject(UsageViewModel())
 }

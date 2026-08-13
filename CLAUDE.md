@@ -23,6 +23,53 @@ cp -R ~/Library/Developer/Xcode/DerivedData/ClaudeCodeStats-*/Build/Products/Rel
 open /Applications/ClaudeCodeStats.app
 ```
 
+### Sign local builds with a stable certificate
+
+The project signs ad-hoc (`CODE_SIGN_IDENTITY = "-"`), which is right for CI but painful for local development: an ad-hoc signature's identity **is** the binary's hash, so every rebuild looks like a different app to the system. The visible symptom is the keychain — the app reads the CLI's `Claude Code-credentials` item, and "Always Allow" is bound to the app's identity, so each rebuild silently revokes it and the permission dialog returns.
+
+Create a self-signed code-signing certificate once, mark it trusted for code signing, and build with it. Both halves matter, and the second one is easy to skip: `codesign` happily signs with an untrusted certificate, so the build succeeds and the app runs — but the keychain still re-prompts. Its ACL check validates the signing chain, and an untrusted chain never matches the stored entry, however many times you click "Always Allow".
+
+```bash
+# One-off: generate, then import into the login keychain
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes \
+  -subj "/CN=ClaudeCodeStats Local Signing" \
+  -addext "basicConstraints=critical,CA:false" \
+  -addext "keyUsage=critical,digitalSignature" \
+  -addext "extendedKeyUsage=critical,codeSigning"
+# -legacy matters: OpenSSL 3's default PKCS#12 MAC fails Security.framework's check
+openssl pkcs12 -export -out cert.p12 -inkey key.pem -in cert.pem \
+  -passout pass:temp -name "ClaudeCodeStats Local Signing" -legacy
+security import cert.p12 -k ~/Library/Keychains/login.keychain-db -T /usr/bin/codesign -P temp
+# Trust it for code signing only — this is what makes the keychain ACL stick
+sudo security add-trusted-cert -d -r trustRoot -p codeSign \
+  -k /Library/Keychains/System.keychain cert.pem
+```
+
+Then pass it on every local build — do **not** commit it into `project.pbxproj`, or CI and everyone without this certificate breaks:
+
+```bash
+xcodebuild -scheme ClaudeCodeStats -configuration Release \
+  CODE_SIGN_IDENTITY="ClaudeCodeStats Local Signing" build
+```
+
+Two checks confirm it worked. `security verify-cert -c cert.pem -p codeSign` must say `certificate verification successful` — before the trust step it reports `CSSMERR_TP_NOT_TRUSTED`, which is the state that leaves the keychain re-prompting. And `codesign -d -r- /Applications/ClaudeCodeStats.app` should print a designated requirement naming the certificate rather than a binary hash:
+
+```
+identifier "com.claudecodestats.app" and certificate leaf = H"…"
+```
+
+That is the whole point — the requirement now survives rebuilds, because it pins the certificate instead of the binary.
+
+Note that `add-trusted-cert` leaves a second copy of the certificate in the System keychain, so `security find-identity -v -p codesigning` lists the same identity twice. Both entries share one hash, but if `codesign -s "ClaudeCodeStats Local Signing"` ever complains about ambiguity, pass the SHA-1 instead.
+
+Switching from ad-hoc to the certificate invalidates the app's own cached keychain item, created under the old identity. Delete it once so the app recreates it, otherwise the first launch costs an extra prompt:
+
+```bash
+security delete-generic-password -s "ClaudeCodeStats-credentials"
+```
+
+### Verifying changes
+
 There are no tests or linters configured, so verifying a change means running the app and looking at it. Three non-obvious traps when doing that from a shell:
 
 - **Launch with `open`, never `&`.** A `.app` started as `"$BINARY" &` from a Bash tool dies when that shell returns, often mid-work — `open /Applications/ClaudeCodeStats.app` hands it to LaunchServices so it survives. To time a scan or wait on a side effect, poll the artifact (`until [ -f "$cost_cache" ]; do sleep 2; done`), don't hold the process open.
@@ -36,7 +83,7 @@ There are no tests or linters configured, so verifying a change means running th
 - **App entry point**: `ClaudeCodeStatsApp.swift` — `MenuBarExtra` with chart icon, red dot badge overlay for updates
 - **Main view**: `ContentView.swift` — contains the `UsageViewModel` (handles usage data + status polling) and all view components
 - **Services** (singletons, async/await):
-  - `OAuthUsageService` — fetches usage data from the Anthropic `GET /api/oauth/usage` endpoint using OAuth credentials (reads `~/.claude/.credentials.json` first, falls back to macOS Keychain `Claude Code-credentials`), decoding session, weekly all-models, and per-model scoped weekly limits (e.g. Fable) from the JSON `limits` array
+  - `OAuthUsageService` — fetches usage data from the Anthropic `GET /api/oauth/usage` endpoint using OAuth credentials (reads `~/.claude/.credentials.json` first, falls back to macOS Keychain `Claude Code-credentials`), decoding session, weekly all-models, and per-model scoped weekly limits (e.g. Fable) from the JSON `limits` array. **Never call `hasCredentials` from a SwiftUI `body`**: it walks the full token cascade, and on the common macOS setup (no credentials file — the CLI keeps the token in the keychain) that cascade reaches the keychain, which can raise a system permission prompt once the cached token has rotated out. A body re-evaluates on every state change, so one screen turned into several prompts. `UsageViewModel.hasCredentials` samples it once per refresh; views read that
   - `CostService` — computes API-equivalent spend by scanning the Claude Code transcripts in `~/.claude/projects/**/*.jsonl`. An `actor`, not a `@MainActor` singleton: a cold scan parses the entire corpus (gigabytes, seconds of CPU) and has to stay off the main thread. Caches per-day rollups in Application Support and resumes each transcript from a byte offset, so a warm refresh re-reads only what was appended — usually nothing, and it then skips the cache write too. Any change to its price table, cost formula, or parsing **must** bump `cacheVersion` — costs are priced once at scan time and offsets advance regardless, so otherwise the change is silently ignored
   - `StatusService` — fetches health status from status.claude.com
   - `TraceService` — reads Cloudflare's edge view of the connection from `claude.ai/cdn-cgi/trace`, a plain-text `key=value` body. Lines are cut at their **first** `=` because `uag` carries a user agent that can contain one; unknown keys are ignored. Gated on `TraceSettings.isEnabled` in `UsageViewModel.refreshTrace()`, not in the view — a disabled card must cost no request, not merely stay hidden
