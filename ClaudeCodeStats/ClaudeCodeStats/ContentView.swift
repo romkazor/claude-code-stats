@@ -13,6 +13,7 @@ struct ContentView: View {
     @AppStorage(Prefs.showSpendCard) private var showSpendCard = true
     @AppStorage(Prefs.showRTKCard) private var showRTKCard = true
     @AppStorage(Prefs.showTraceCard) private var showTrace = true
+    @AppStorage(Prefs.showLimitResetsCard) private var showLimitResets = true
 
     private static let lastUpdatedTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -149,6 +150,10 @@ struct ContentView: View {
                     usage: limit.usage,
                     resetsAt: limit.resetsAt
                 )
+            }
+
+            if showLimitResets, let resets = usage.limitResets {
+                LimitResetsCardView(resets: resets)
             }
 
             // Absent only until the first transcript scan finishes. The limits

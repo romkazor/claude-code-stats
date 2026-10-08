@@ -10,6 +10,16 @@ enum HTTP {
     static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
 
+    /// The Claude Code CLI's User-Agent, the one exception to `userAgent`.
+    ///
+    /// The usage endpoint reports limit resets only to a client that names itself
+    /// as the CLI at a current version: a browser UA gets `ineligible_reason:
+    /// "surface"`, an old version `"cli_version"`. So that request alone sets a
+    /// per-request User-Agent, and it passes the version actually installed.
+    static func cliUserAgent(version: String) -> String {
+        "claude-cli/\(version) (external, cli)"
+    }
+
     /// A session configuration carrying the shared User-Agent.
     ///
     /// `httpAdditionalHeaders` is the whole point: it applies to every request a

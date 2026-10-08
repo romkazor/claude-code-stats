@@ -78,8 +78,15 @@ class UsageViewModel: ObservableObject {
             error = nil
         }
 
+        // Limit resets ride on the usage request, so the card's toggle decides
+        // what that request asks for rather than whether a second one is sent.
+        // Without a known CLI version the server would refuse them anyway.
+        let cliVersion = Prefs.isLimitResetsCardEnabled
+            ? try? await VersionService.shared.fetchInstalledVersion()
+            : nil
+
         do {
-            let usage = try await OAuthUsageService.shared.fetchUsage()
+            let usage = try await OAuthUsageService.shared.fetchUsage(cliVersion: cliVersion)
             webUsage = usage
             error = nil
             hasCredentials = true

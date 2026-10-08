@@ -16,6 +16,8 @@ struct WebUsageData {
     let weeklyUsage: Double
     let weeklyResetsAt: Date
     let scopedLimits: [ScopedUsageLimit]
+    // Nil when not requested, or when the account isn't eligible for resets.
+    var limitResets: LimitResets? = nil
     let lastUpdated: Date
 
     static var empty: WebUsageData {
@@ -28,6 +30,23 @@ struct WebUsageData {
             lastUpdated: Date()
         )
     }
+}
+
+// One-off usage-limit resets on offer: promotional full resets, plus the
+// 5-hour reset offered once the session limit is hit.
+struct LimitResets {
+    let grants: [ResetGrant]
+    let sessionResetAvailable: Bool
+    let sessionResetNextAt: Date?
+}
+
+// A full reset grant, clearing the session and weekly limits at once.
+struct ResetGrant: Identifiable {
+    let id: String
+    let label: String
+    let resetsLeft: Int
+    let resetsTotal: Int
+    let endsAt: Date?
 }
 
 // What a model's tokens would have cost at API rates over a window.
@@ -256,6 +275,7 @@ enum Prefs {
     static let showSpendCard = "showSpendCard"
     static let showRTKCard = "showRTKCard"
     static let showTraceCard = "showTrace"
+    static let showLimitResetsCard = "showLimitResetsCard"
     static let showLocationInMenuBar = "showLocationInMenuBar"
 
     /// `UserDefaults.bool(forKey:)` reports `false` for a key that was never
@@ -272,6 +292,7 @@ enum Prefs {
     static var isSpendCardEnabled: Bool { bool(showSpendCard, default: true) }
     static var isRTKCardEnabled: Bool { bool(showRTKCard, default: true) }
     static var isTraceCardEnabled: Bool { bool(showTraceCard, default: true) }
+    static var isLimitResetsCardEnabled: Bool { bool(showLimitResetsCard, default: true) }
     static var isLocationInMenuBarEnabled: Bool { bool(showLocationInMenuBar, default: false) }
 
     /// Whether anything still needs trace data. The menu bar flag is fed by the

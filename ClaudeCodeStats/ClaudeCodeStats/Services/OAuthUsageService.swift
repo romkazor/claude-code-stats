@@ -6,6 +6,9 @@ class OAuthUsageService {
     static let shared = OAuthUsageService()
 
     private let usageURL = "https://api.anthropic.com/api/oauth/usage"
+    // What Claude Code asks for at a usage limit: the same body plus the reset
+    // offers (`cedar_ember`, `juniper_tide`), without the spend block.
+    private let limitResetsQuery = "at_wall=1&skip_spend=1"
     private let credentialsPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return "\(home)/.claude/.credentials.json"
@@ -58,7 +61,10 @@ class OAuthUsageService {
         readCredential() != nil
     }
 
-    func fetchUsage() async throws -> WebUsageData {
+    /// Pass the installed CLI version to also read limit resets. They come in the
+    /// same response, so asking for them costs no extra request against the
+    /// endpoint's tight rate limit.
+    func fetchUsage(cliVersion: String? = nil) async throws -> WebUsageData {
         // Carry the whole credential, not just its string: whether we knew the
         // token was lapsed when we sent it is what lets us read a 429 correctly
         // below.
@@ -66,12 +72,16 @@ class OAuthUsageService {
             throw UsageError.noCredentials
         }
 
-        guard let url = URL(string: usageURL) else {
+        let urlString = cliVersion == nil ? usageURL : "\(usageURL)?\(limitResetsQuery)"
+        guard let url = URL(string: urlString) else {
             throw UsageError.invalidResponse
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        if let cliVersion {
+            request.setValue(HTTP.cliUserAgent(version: cliVersion), forHTTPHeaderField: "User-Agent")
+        }
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("Bearer \(credential.token)", forHTTPHeaderField: "Authorization")
@@ -334,11 +344,47 @@ class OAuthUsageService {
         let fiveHour: Window?
         let sevenDay: Window?
         let limits: [Limit]?
+        let cedarEmber: FullResets?
+        let juniperTide: SessionReset?
 
         enum CodingKeys: String, CodingKey {
             case fiveHour = "five_hour"
             case sevenDay = "seven_day"
             case limits
+            case cedarEmber = "cedar_ember"
+            case juniperTide = "juniper_tide"
+        }
+
+        // Every field optional: these blocks are undocumented, and a shape change
+        // must cost the resets card, not the whole usage response.
+        struct FullResets: Decodable {
+            let eligible: Bool?
+            let grants: [Grant]?
+
+            struct Grant: Decodable {
+                let id: String?
+                let label: String?
+                let resetsTotal: Int?
+                let resetsLeft: Int?
+                let endsAt: String?
+
+                enum CodingKeys: String, CodingKey {
+                    case id, label
+                    case resetsTotal = "resets_total"
+                    case resetsLeft = "resets_left"
+                    case endsAt = "ends_at"
+                }
+            }
+        }
+
+        struct SessionReset: Decodable {
+            let available: Bool?
+            let nextAvailableAt: String?
+
+            enum CodingKeys: String, CodingKey {
+                case available
+                case nextAvailableAt = "next_available_at"
+            }
         }
 
         struct Window: Decodable {
@@ -401,7 +447,31 @@ class OAuthUsageService {
             weeklyUsage: decoded.sevenDay?.utilization ?? 0,
             weeklyResetsAt: parseDate(decoded.sevenDay?.resetsAt) ?? Date(),
             scopedLimits: scopedLimits,
+            limitResets: parseLimitResets(decoded),
             lastUpdated: Date()
+        )
+    }
+
+    // Nil unless the server judged this client eligible — an outdated CLI
+    // version or a non-CLI User-Agent is answered with `eligible: false`.
+    private func parseLimitResets(_ decoded: UsageResponse) -> LimitResets? {
+        guard let full = decoded.cedarEmber, full.eligible == true else { return nil }
+
+        let grants: [ResetGrant] = (full.grants ?? []).compactMap { grant in
+            guard let id = grant.id, let resetsLeft = grant.resetsLeft else { return nil }
+            return ResetGrant(
+                id: id,
+                label: grant.label ?? "",
+                resetsLeft: resetsLeft,
+                resetsTotal: grant.resetsTotal ?? resetsLeft,
+                endsAt: parseDate(grant.endsAt)
+            )
+        }
+
+        return LimitResets(
+            grants: grants,
+            sessionResetAvailable: decoded.juniperTide?.available ?? false,
+            sessionResetNextAt: parseDate(decoded.juniperTide?.nextAvailableAt)
         )
     }
 
