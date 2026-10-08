@@ -29,6 +29,7 @@
 		A25 /* TraceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27 /* TraceService.swift */; };
 		A26 /* TraceCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B28 /* TraceCardView.swift */; };
 		A28 /* LimitResetsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30 /* LimitResetsCardView.swift */; };
+		A29 /* ExtraUsageCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B31 /* ExtraUsageCardView.swift */; };
 		A27 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B29 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -57,6 +58,7 @@
 		B27 /* TraceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceService.swift; sourceTree = "<group>"; };
 		B28 /* TraceCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceCardView.swift; sourceTree = "<group>"; };
 		B30 /* LimitResetsCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitResetsCardView.swift; sourceTree = "<group>"; };
+		B31 /* ExtraUsageCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtraUsageCardView.swift; sourceTree = "<group>"; };
 		B29 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		P01 /* ClaudeCodeStats.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeCodeStats.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -124,6 +126,7 @@
 				B25 /* RTKSavingsCardView.swift */,
 				B28 /* TraceCardView.swift */,
 				B30 /* LimitResetsCardView.swift */,
+				B31 /* ExtraUsageCardView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -227,6 +230,7 @@
 				A25 /* TraceService.swift in Sources */,
 				A26 /* TraceCardView.swift in Sources */,
 				A28 /* LimitResetsCardView.swift in Sources */,
+				A29 /* ExtraUsageCardView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

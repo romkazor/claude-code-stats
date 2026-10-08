@@ -7,8 +7,10 @@ class OAuthUsageService {
 
     private let usageURL = "https://api.anthropic.com/api/oauth/usage"
     // What Claude Code asks for at a usage limit: the same body plus the reset
-    // offers (`cedar_ember`, `juniper_tide`), without the spend block.
-    private let limitResetsQuery = "at_wall=1&skip_spend=1"
+    // offers (`cedar_ember`, `juniper_tide`).
+    private let limitResetsQuery = "at_wall=1"
+    // Drops the `spend` and `extra_usage` blocks.
+    private let skipSpendQuery = "skip_spend=1"
     private let credentialsPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return "\(home)/.claude/.credentials.json"
@@ -61,10 +63,10 @@ class OAuthUsageService {
         readCredential() != nil
     }
 
-    /// Pass the installed CLI version to also read limit resets. They come in the
-    /// same response, so asking for them costs no extra request against the
-    /// endpoint's tight rate limit.
-    func fetchUsage(cliVersion: String? = nil) async throws -> WebUsageData {
+    /// Pass the installed CLI version to also read limit resets, and
+    /// `includeSpend` for extra usage. Both come in the same response, so asking
+    /// for them costs no extra request against the endpoint's tight rate limit.
+    func fetchUsage(cliVersion: String? = nil, includeSpend: Bool = true) async throws -> WebUsageData {
         // Carry the whole credential, not just its string: whether we knew the
         // token was lapsed when we sent it is what lets us read a 429 correctly
         // below.
@@ -72,7 +74,10 @@ class OAuthUsageService {
             throw UsageError.noCredentials
         }
 
-        let urlString = cliVersion == nil ? usageURL : "\(usageURL)?\(limitResetsQuery)"
+        var query: [String] = []
+        if cliVersion != nil { query.append(limitResetsQuery) }
+        if !includeSpend { query.append(skipSpendQuery) }
+        let urlString = query.isEmpty ? usageURL : "\(usageURL)?\(query.joined(separator: "&"))"
         guard let url = URL(string: urlString) else {
             throw UsageError.invalidResponse
         }
@@ -346,6 +351,7 @@ class OAuthUsageService {
         let limits: [Limit]?
         let cedarEmber: FullResets?
         let juniperTide: SessionReset?
+        let spend: Spend?
 
         enum CodingKeys: String, CodingKey {
             case fiveHour = "five_hour"
@@ -353,6 +359,37 @@ class OAuthUsageService {
             case limits
             case cedarEmber = "cedar_ember"
             case juniperTide = "juniper_tide"
+            case spend
+        }
+
+        struct Spend: Decodable {
+            let used: Money?
+            let limit: Money?
+            let percent: Double?
+            let enabled: Bool?
+            let disabledReason: String?
+
+            enum CodingKeys: String, CodingKey {
+                case used, limit, percent, enabled
+                case disabledReason = "disabled_reason"
+            }
+
+            // An amount in minor units: 1000 with exponent 2 is 10.00.
+            struct Money: Decodable {
+                let amountMinor: Int?
+                let currency: String?
+                let exponent: Int?
+
+                enum CodingKeys: String, CodingKey {
+                    case amountMinor = "amount_minor"
+                    case currency, exponent
+                }
+
+                var value: Double? {
+                    guard let amountMinor else { return nil }
+                    return Double(amountMinor) / pow(10, Double(exponent ?? 2))
+                }
+            }
         }
 
         // Every field optional: these blocks are undocumented, and a shape change
@@ -448,7 +485,25 @@ class OAuthUsageService {
             weeklyResetsAt: parseDate(decoded.sevenDay?.resetsAt) ?? Date(),
             scopedLimits: scopedLimits,
             limitResets: parseLimitResets(decoded),
+            extraUsage: parseExtraUsage(decoded.spend),
             lastUpdated: Date()
+        )
+    }
+
+    // Nil when extra usage was never set up: no cap and not enabled.
+    private func parseExtraUsage(_ spend: UsageResponse.Spend?) -> ExtraUsage? {
+        guard let spend, spend.enabled == true || spend.limit != nil,
+              let used = spend.used?.value,
+              let currency = spend.used?.currency ?? spend.limit?.currency else {
+            return nil
+        }
+        return ExtraUsage(
+            used: used,
+            limit: spend.limit?.value,
+            currency: currency,
+            percent: spend.percent ?? 0,
+            isEnabled: spend.enabled ?? false,
+            disabledReason: spend.disabledReason
         )
     }
 

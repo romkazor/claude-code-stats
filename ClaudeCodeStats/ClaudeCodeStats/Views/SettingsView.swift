@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.showRTKCard) private var showRTKCard = true
     @AppStorage(Prefs.showTraceCard) private var showTrace = true
     @AppStorage(Prefs.showLimitResetsCard) private var showLimitResets = true
+    @AppStorage(Prefs.showExtraUsageCard) private var showExtraUsage = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -178,6 +179,12 @@ struct SettingsView: View {
                 .controlSize(.mini)
 
             Toggle("Limit resets", isOn: $showLimitResets)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.textSecondary)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+            Toggle("Extra usage", isOn: $showExtraUsage)
                 .font(.system(size: 11))
                 .foregroundColor(Theme.textSecondary)
                 .toggleStyle(.switch)

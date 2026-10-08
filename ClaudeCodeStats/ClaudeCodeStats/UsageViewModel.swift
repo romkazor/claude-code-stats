@@ -86,7 +86,10 @@ class UsageViewModel: ObservableObject {
             : nil
 
         do {
-            let usage = try await OAuthUsageService.shared.fetchUsage(cliVersion: cliVersion)
+            let usage = try await OAuthUsageService.shared.fetchUsage(
+                cliVersion: cliVersion,
+                includeSpend: Prefs.isExtraUsageCardEnabled
+            )
             webUsage = usage
             error = nil
             hasCredentials = true

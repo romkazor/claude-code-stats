@@ -18,6 +18,8 @@ struct WebUsageData {
     let scopedLimits: [ScopedUsageLimit]
     // Nil when not requested, or when the account isn't eligible for resets.
     var limitResets: LimitResets? = nil
+    // Nil when not requested, or when extra usage was never set up.
+    var extraUsage: ExtraUsage? = nil
     let lastUpdated: Date
 
     static var empty: WebUsageData {
@@ -38,6 +40,16 @@ struct LimitResets {
     let grants: [ResetGrant]
     let sessionResetAvailable: Bool
     let sessionResetNextAt: Date?
+}
+
+// Pay-as-you-go usage past the plan's limits, drawn against a spending cap.
+struct ExtraUsage {
+    let used: Double
+    let limit: Double?
+    let currency: String
+    let percent: Double
+    let isEnabled: Bool
+    let disabledReason: String?
 }
 
 // A full reset grant, clearing the session and weekly limits at once.
@@ -276,6 +288,7 @@ enum Prefs {
     static let showRTKCard = "showRTKCard"
     static let showTraceCard = "showTrace"
     static let showLimitResetsCard = "showLimitResetsCard"
+    static let showExtraUsageCard = "showExtraUsageCard"
     static let showLocationInMenuBar = "showLocationInMenuBar"
 
     /// `UserDefaults.bool(forKey:)` reports `false` for a key that was never
@@ -293,6 +306,7 @@ enum Prefs {
     static var isRTKCardEnabled: Bool { bool(showRTKCard, default: true) }
     static var isTraceCardEnabled: Bool { bool(showTraceCard, default: true) }
     static var isLimitResetsCardEnabled: Bool { bool(showLimitResetsCard, default: true) }
+    static var isExtraUsageCardEnabled: Bool { bool(showExtraUsageCard, default: true) }
     static var isLocationInMenuBarEnabled: Bool { bool(showLocationInMenuBar, default: false) }
 
     /// Whether anything still needs trace data. The menu bar flag is fed by the
