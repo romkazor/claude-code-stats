@@ -53,7 +53,7 @@ class UsageViewModel: ObservableObject {
     }
 
     var statusColor: Color {
-        claudeStatus?.color ?? .gray
+        claudeStatus?.color ?? Theme.textSecondary
     }
 
     var statusText: String {

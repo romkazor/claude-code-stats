@@ -14,6 +14,17 @@ class OAuthUsageService {
     private let appKeychainService = "ClaudeCodeStats-credentials"
     private let appKeychainAccount = "oauth-token"
     private var cachedCredential: Credential?
+    // Outcome of the last sweep that turned up no usable credential, expired
+    // stand-in included. Such a sweep costs a file read plus two
+    // SecItemCopyMatching calls, one of them against the CLI's item — the
+    // prompt-capable read the app cache exists to avoid — and cachedCredential
+    // cannot absorb it, because its gate is isUsable and so never matches a
+    // lapsed token. hasCredentials is evaluated inside SwiftUI bodies that re-run
+    // on every redraw, so without this the all-expired and signed-out states both
+    // mean unbounded keychain traffic. Reusing the outcome for a short window
+    // bounds that while still picking up a rotation promptly.
+    private var lastUnusableSweep: (credential: Credential?, at: Date)?
+    private let unusableSweepReuseWindow: TimeInterval = 30
     private let session: URLSession
 
     // An OAuth access token plus the expiry the CLI recorded for it. Tracking
@@ -44,11 +55,14 @@ class OAuthUsageService {
     }
 
     var hasCredentials: Bool {
-        readAccessToken() != nil
+        readCredential() != nil
     }
 
     func fetchUsage() async throws -> WebUsageData {
-        guard let token = readAccessToken() else {
+        // Carry the whole credential, not just its string: whether we knew the
+        // token was lapsed when we sent it is what lets us read a 429 correctly
+        // below.
+        guard let credential = readCredential() else {
             throw UsageError.noCredentials
         }
 
@@ -60,7 +74,7 @@ class OAuthUsageService {
         request.httpMethod = "GET"
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(credential.token)", forHTTPHeaderField: "Authorization")
 
         let (data, response): (Data, URLResponse)
         do {
@@ -80,10 +94,23 @@ class OAuthUsageService {
             throw UsageError.tokenExpired
         }
 
-        // The usage endpoint has its own rate limit (HTTP 429 with a long
-        // retry-after and no usage body). Surface it distinctly so the UI keeps
-        // showing the last known data and recovers on the next scheduled poll.
+        // 429 covers two unrelated conditions here. The endpoint has its own rate
+        // limit (a long retry-after and no usage body), and it also answers a
+        // rotated-away token with the same status and the same rate_limit_error
+        // body — it never returns 401 for that, which is why the 401/403 branch
+        // above can't catch it. The status alone therefore can't separate them,
+        // but our own bookkeeping can: readCredential() hands back a lapsed token
+        // only when no source has a live one, and such a request was doomed
+        // before it was sent. Reporting that as a rate limit tells the user to
+        // wait for something that cannot clear on its own — re-authenticating is
+        // what actually fixes it.
         if httpResponse.statusCode == 429 {
+            if !credential.isUsable {
+                clearTokenCaches()
+                throw UsageError.tokenExpired
+            }
+            // Genuinely throttled. Surface it distinctly so the UI keeps showing
+            // the last known data and recovers on the next scheduled poll.
             throw UsageError.rateLimited
         }
 
@@ -94,44 +121,84 @@ class OAuthUsageService {
         return try parseUsage(data)
     }
 
-    private func readAccessToken() -> String? {
+    // Returns the credential to authenticate with, or nil when no source holds a
+    // token at all. The result can be a lapsed credential — see the last-resort
+    // pass below — so callers that care must check isUsable rather than assume a
+    // returned credential is live.
+    private func readCredential() -> Credential? {
         // In-memory cache, but only while the token is still fresh.
         if let cached = cachedCredential, cached.isUsable {
-            return cached.token
+            return cached
+        }
+
+        // A sweep that just came up empty stands in for repeating it; see
+        // lastUnusableSweep. Its credential is nil when no source held a token at
+        // all, which is as much a result worth reusing as an expired one.
+        if let sweep = lastUnusableSweep,
+           -sweep.at.timeIntervalSinceNow < unusableSweepReuseWindow {
+            return sweep.credential
         }
 
         // Live file source (present on some setups). Authoritative and cheap to
-        // read with no prompt, so use it whenever readable — the isUsable gate is
-        // only for caches, which we skip in order to fall through to a live source
-        // like this one. Gating it here could bypass a valid near-expiry file token
-        // for a staler cache, a keychain prompt, or a false "no credentials".
-        if let cred = readCredentialFromFile() {
-            cachedCredential = cred
-            return cred.token
+        // read with no prompt, so it stays ahead of the keychain — but only while
+        // it is usable. A CLI that rotates its keychain copy and stops rewriting
+        // the file leaves a permanently expired token here, and taking it
+        // unconditionally would pin us to it for good: the fresher keychain
+        // source below is never reached, and because a rotated-away token answers
+        // 429 rather than 401, the failure is indistinguishable from a real rate
+        // limit, so nothing self-heals.
+        let fileCredential = readCredentialFromFile()
+        if let cred = fileCredential, cred.isUsable {
+            adopt(cred)
+            return cred
         }
 
         // App-owned keychain cache — avoids repeated permission prompts on the
         // CLI's item. Trust it only while unexpired; a token that has rotated out
         // is skipped so we fall through and re-read the live source below.
-        if let cred = readCredentialFromAppKeychain(), cred.isUsable {
-            cachedCredential = cred
-            return cred.token
+        let appCacheCredential = readCredentialFromAppKeychain()
+        if let cred = appCacheCredential, cred.isUsable {
+            adopt(cred)
+            return cred
         }
 
         // Live keychain source owned by the Claude Code CLI. Re-reading here is
         // what picks up a token the CLI has rotated; cache the result (in the new
-        // format, with expiry) so we don't prompt on every fetch.
-        if let cred = readCredentialFromKeychain(service: keychainService) {
+        // format, with expiry) so we don't prompt on every fetch. It sits after
+        // the app cache, as it already did, so a usable cache still spares us the
+        // prompt.
+        let keychainCredential = readCredentialFromKeychain(service: keychainService)
+        if let cred = keychainCredential, cred.isUsable {
             saveCredentialToAppKeychain(cred)
-            cachedCredential = cred
-            return cred.token
+            adopt(cred)
+            return cred
         }
 
-        return nil
+        // Nothing is unexpired, so send the token that lapsed most recently
+        // rather than claiming we have no credentials — signed in with a stale
+        // token is not the same as signed out, and a request that fails tells the
+        // user more than a false "not signed in" would. The app cache is a
+        // candidate alongside the live sources: when a live read starts failing
+        // (a denied prompt, a renamed item) it can hold the newest token we ever
+        // saw, and leaving it out would resurrect the very "no credentials" claim
+        // this pass exists to avoid.
+        let expired: [Credential] = [fileCredential, appCacheCredential, keychainCredential]
+            .compactMap { $0 }
+        let fallback = expired.max(by: { ($0.expiresAt ?? .distantPast) < ($1.expiresAt ?? .distantPast) })
+        lastUnusableSweep = (fallback, Date())
+        return fallback
+    }
+
+    // Take a live credential into the in-memory cache. Any record of a sweep that
+    // found nothing usable is stale the moment one does turn up.
+    private func adopt(_ credential: Credential) {
+        cachedCredential = credential
+        lastUnusableSweep = nil
     }
 
     private func clearTokenCaches() {
         cachedCredential = nil
+        lastUnusableSweep = nil
         deleteAppKeychainItem()
     }
 

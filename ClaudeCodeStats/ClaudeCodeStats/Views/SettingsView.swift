@@ -67,7 +67,7 @@ struct SettingsView: View {
 
             HStack(spacing: 8) {
                 Circle()
-                    .fill(viewModel.hasCredentials ? Color.green : Color.red)
+                    .fill(viewModel.hasCredentials ? Theme.statusOK : Theme.statusCritical)
                     .frame(width: 8, height: 8)
 
                 Text(viewModel.hasCredentials
